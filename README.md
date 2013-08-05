@@ -1,9 +1,12 @@
 browsermob-proxy-rb
 ===================
 
-Ruby client for the BrowserMob Proxy 2.0 REST API.
+Fork of Ruby client for the BrowserMob Proxy 2.0 REST API.
 
 [![Build Status](https://secure.travis-ci.org/jarib/browsermob-proxy-rb.png)](http://travis-ci.org/jarib/browsermob-proxy-rb)
+
+Use this gem if you have only need to a client , this gem supose the server is already run.
+
 
 
 How to use with selenium-webdriver
@@ -15,52 +18,20 @@ Manually:
 require 'selenium/webdriver'
 require 'browsermob/proxy'
 
-server = BrowserMob::Proxy::Server.new("/path/to/download/browsermob-proxy") #=> #<BrowserMob::Proxy::Server:0x000001022c6ea8 ...>
-server.start
+profile = Selenium::WebDriver::Firefox::Profile.new
 
-proxy = server.create_proxy #=> #<BrowserMob::Proxy::Client:0x0000010224bdc0 ...>
+bm =  BrowserMob::Proxy::Client.new 'localhost', '8080'
 
-profile = Selenium::WebDriver::Firefox::Profile.new #=> #<Selenium::WebDriver::Firefox::Profile:0x000001022bf748 ...>
-profile.proxy = proxy.selenium_proxy
+proxy = Selenium::WebDriver::Proxy.new(:http => "localhost:9091")
+
+profile.proxy = proxy
+
 
 driver = Selenium::WebDriver.for :firefox, :profile => profile
+wait = Selenium::WebDriver::Wait.new(:timeout => 30)
 
-proxy.new_har "google"
-driver.get "http://google.com"
 
-har = proxy.har #=> #<HAR::Archive:0x-27066c42d7e75fa6>
-har.entries.first.request.url #=> "http://google.com"
-har.save_to "/tmp/google.har"
 
-proxy.close
-driver.quit
-```
-
-With event listener:
-
-``` ruby
-require 'selenium/webdriver'
-require 'browsermob/proxy'
-require 'browsermob/proxy/webdriver_listener'
-
-# start server, set up proxy like above
-proxy_listener = BrowserMob::Proxy::WebDriverListener.new(proxy)
-
-driver = Selenium::WebDriver.for :firefox, :profile => profile, :listener => proxy_listener
-# use driver
-driver.quit
-
-listener.hars #=> [#<HAR::Archive:0x-27066c42d7e75fa6>, #<HAR::Archive:0x-d7e75fa627066c42>]
-proxy.close
-
-```
-
-Viewing HARs
-------------
-
-The HAR gem includes a HAR viewer. After running the code above, you can view the saved HAR by running
-
-    $ har /tmp/google.har
 
 See also
 --------
