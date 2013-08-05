@@ -1,83 +1,49 @@
-module BrowserMob
-  module Proxy
-
+module Browsermob
     class Client
-      attr_reader :host, :port
+      
+      #ATTRIBUTES
+      attr_reader :host, :port, :resource
 
-      def self.from(server_url)
-        # ActiveSupport may define Object#load, so we can't use MultiJson.respond_to? here.
-        sm = MultiJson.singleton_methods.map { |e| e.to_sym }
-        decode_method = sm.include?(:load) ? :load : :decode
+      #CONSTANTS
+      LIMITS = {
+        :upstream_kbps => 'upstreamKbps',
+        :downstream_kbps => 'downstreamKbps',
+        :latency => 'latency'
+      }
 
-        port = MultiJson.send(decode_method,
-          RestClient.post(URI.join(server_url, "proxy").to_s, '')
-        ).fetch('port')
-
-        uri = URI.parse(File.join(server_url, "proxy", port.to_s))
-        resource = RestClient::Resource.new(uri.to_s)
-
-        Client.new resource, uri.host, port
-      end
-
-      def initialize(resource, host, port)
-        @resource = resource
+      #Create new proxy on browsermob
+      def initialize(host, port)
         @host = host
-        @port = port
+        @har =  false
+        uri = "http://#{host}:#{port}/proxy"
+        proxy = RestClient::Resource.new uri
+        @port = MultiJson.load(proxy.post '').fetch('port')
+        @resource = RestClient::Resource.new("#{uri}/#{@port}")
       end
-
-      #
-      # Examples:
-      #
-      #   client.new_har("page-name")
-      #   client.new_har("page-name", :capture_headers => true)
-      #   client.new_har(:capture_headers => true)
-      #
-
-      def new_har(ref = nil, opts = {})
-        if opts.empty? && ref.kind_of?(Hash)
-          opts = ref
-          ref = nil
-        end
-
-        params = {}
-
-        params[:initialPageRef] = ref if ref
-        params[:captureHeaders] = true if opts[:capture_headers]
-
-
-        previous = @resource["har"].put params
-        HAR::Archive.from_string(previous) unless previous.empty?
-      end
-
-      def new_page(ref)
-        @resource['har/pageRef'].put :pageRef => ref
-      end
-
-      def har
-        HAR::Archive.from_string @resource["har"].get
-      end
-
-      def selenium_proxy(*protocols)
-        require 'selenium-webdriver' unless defined?(Selenium)
-
-        protocols += [:http] if protocols.empty?
-        unless (protocols - [:http, :ssl, :ftp]).empty?
-          raise "Invalid protocol specified.  Must be one of: :http, :ssl, or :ftp."
-        end
-
-        proxy_mapping = {}
-        protocols.each { |proto| proxy_mapping[proto] = "#{@host}:#{@port}" }
-        Selenium::WebDriver::Proxy.new(proxy_mapping)
-      end
-
-      def whitelist(regexp, status_code)
-        regex = Regexp === regexp ? regexp.source : regexp.to_s
-        @resource['whitelist'].put :regex => regex, :status => status_code
-      end
-
+      
+      #No record this request
       def blacklist(regexp, status_code)
         regex = Regexp === regexp ? regexp.source : regexp.to_s
         @resource['blacklist'].put :regex => regex, :status => status_code
+      end
+
+      #Auth http
+      def basic_authentication(domain, username, password)
+        data = { username: username, password: password }
+        @resource["auth/basic/#{domain}"].post data.to_json, :content_type => "application/json"
+      end
+
+      # Close proxy
+      def close
+        retour = @resource.delete
+        @resource = nil
+        @har = false
+        retour
+      end
+
+      #Get http archive 
+      def har
+        @resource["har"].get
       end
 
       def header(hash)
@@ -85,16 +51,6 @@ module BrowserMob
       end
       alias_method :headers, :header
 
-      def basic_authentication(domain, username, password)
-        data = { username: username, password: password }
-        @resource["auth/basic/#{domain}"].post data.to_json, :content_type => "application/json"
-      end
-
-      LIMITS = {
-        :upstream_kbps   => 'upstreamKbps',
-        :downstream_kbps => 'downstreamKbps',
-        :latency         => 'latency'
-      }
 
       def limit(opts)
         params = {}
@@ -114,10 +70,29 @@ module BrowserMob
         @resource['limit'].put params
       end
 
-      def close
-        @resource.delete
-      end
-    end # Client
+      #Start to record a new http archive
+      def new_har(ref = nil, opts = {})
+        if opts.empty? && ref.kind_of?(Hash)
+          opts = ref
+          ref = nil
+        end
+        params = {}
 
-  end # Proxy
-end # BrowserMob
+        params[:initialPageRef] = ref if ref
+        params[:captureHeaders] = true if opts[:capture_headers]
+        @har = true
+        @resource["har"].put params 
+      end
+
+      # Start attahc content to new page
+      def new_page ref = nil
+        @resource['har/pageRef'].put :pageRef => ref if @har
+      end
+
+      #Record ths request
+      def whitelist(regexp, status_code)
+        regex = Regexp === regexp ? regexp.source : regexp.to_s
+        @resource['whitelist'].put :regex => regex, :status => status_code
+      end
+    end 
+end
